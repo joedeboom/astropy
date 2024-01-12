@@ -8,6 +8,7 @@ from PIL import Image
 import pandas as pd
 import numpy as np
 import cv2
+import csv
 import glob
 from regions import Regions
 import math
@@ -34,7 +35,7 @@ from matplotlib.colors import LinearSegmentedColormap
 
 def create_dirs(name):
     """
-    Input: The name of the parent folder of the to-be created dataset.
+    Input: The name of the parent folder of the to-be created dataset. This method creates the directory structure based off the dataset name.
 
     Output: The global directory path
     """
@@ -481,5 +482,27 @@ def gen_bboxes(polygons, scale_factor=2, shift=True, imgshape=(16740,16740)):
             bboxes.append((int(new_min_x), int(new_min_y), int(new_max_x), int(new_max_y)))
 
     return correct_bounding_boxes(bboxes, imgshape)
+
+
+def log_array_statistics(array, image_index, global_dir):
+    files = [os.path.join(global_dir, 'radio_data.csv'), os.path.join(global_dir, 'ha_data.csv')]
+    
+    for file in files:
+        channel_data = array[:,:,0] if 'radio' in file else array[:,:,1]
+
+        # Calculate statistics
+        mean_value = np.mean(channel_data)
+        std_deviation = np.std(channel_data)
+        max_value = np.max(channel_data)
+        min_value = np.min(channel_data)
+
+        # Log the statistics to the CSV file
+        with open(file, 'a', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            if image_index == 0:
+                # Write header only for the first image
+                csv_writer.writerow(['Image', 'Mean', 'Standard Deviation', 'Maximum', 'Minimum'])
+            csv_writer.writerow([image_index, mean_value, std_deviation, max_value, min_value])
+
 
 

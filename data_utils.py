@@ -31,7 +31,7 @@ import shutil
 import matplotlib.colors as mcolors
 from matplotlib.colors import ListedColormap
 from matplotlib.colors import LinearSegmentedColormap
-
+from IPython.display import display, clear_output
 
 def create_dirs(name):
     """
@@ -62,70 +62,85 @@ def create_dirs(name):
     os.makedirs(img_val_path)
     return global_dir
 
-
-def overlay_anns(images, anns, alpha=0.35):
+def display_images(dataset, index=None):
     """
-    Overlay an annotations on top of images and return the resulting PIL images.
-    
-    Args:
-        image: list of input images (numpy arrays)
-        anns: (PIL.Image.Image): List of anns where the annotation mask (PNG image) with values [0, 1, 2] where
-            0 is 'background', 1 is 'HII', and 2 is 'SNR'.
-        size: optional image resize
-
-    Returns: List of the images with the annotations overlaid (numpy arrays)
+    Input: The name of the dataset. If an index is provided, only show that image and then return
+    Output: None. Displays data in jupyter notebook
     """
-    
-    overlayed_imgs = []
+    if index is not None:
+        idx = index
+    else:
+        idx = 0
+    dr = os.path.join('DATASET',dataset,'data','my_dataset','img','train')
+    while True:
+        entry = f"{dr}/{idx}.npy"
+        print(entry)
+        img = float_to_int(np.load(entry), make3channel=True)
+        ann = Image.open(get_companion(entry))
+        fig, axs = plt.subplots(1, 2, figsize=(16,8))
+        axs[0].imshow(ann)
+        axs[0].set_title('Annotation')
+        axs[1].imshow(img)
+        axs[1].set_title('Image')
+        plt.show() 
+        if index is not None:
+            break
+        action = input('Press enter for next image, \'p\' for previous image, or enter image id. \'q\' to quit')
+        if action.isdigit():
+            idx = int(action)
+        elif action == 'p':
+            idx = idx-1
+        elif action == 'q':
+            break
+        else:
+            idx = idx+1
+        clear_output(wait=True)
+        plt.close()
+    plt.close()
+    return
 
-    # Define a custom colormap for your class labels
-    # Here, we use orange for "HII" (class 1) and green for "SNR" (class 2)
-    colors = ['black', 'orange', 'lightgreen']  # Black for background
-    transparency = [0.0, alpha, alpha]
+def display_histograms(dataset, index=None):
+    histrange = (0,255)
+    bins=255
+    if index is not None:
+        idx = index
+    else:
+        idx = 0
+    dr = os.path.join('DATASET',dataset,'data','my_dataset','img','train')
+    while True:
+        entry = f"{dr}/{idx}.npy"
+        print(entry)
+        img = float_to_int(np.load(entry), make3channel=False)
+        radio = img[:,:,0]
+        ha = img[:,:,1]
+        fig, axs = plt.subplots(1, 2, figsize=(16,3))
+        axs[0].hist(radio.ravel(), bins=bins, range=histrange, alpha=0.7)
+        axs[0].set_title('Radio (Red Channel) Data')
+        axs[0].set_xlabel('Pixel Value')
+        axs[0].set_ylabel('Frequency')
+        axs[0].grid(axis='y', alpha=0.75)
+        axs[1].hist(ha.ravel(), bins=bins, range=histrange, alpha=0.7)
+        axs[1].set_title('H-Alpha (Blue Channel) Data')
+        axs[1].set_xlabel('Pixel Value')
+        axs[1].set_ylabel('Frequency')
+        axs[1].grid(axis='y', alpha=0.75)
+        plt.show()
+        if index is not None:
+            break
+        action = input('Press enter for next image, \'p\' for previous image, or enter image id. \'q\' to quit')
+        if action.isdigit():
+            idx = int(action)
+        elif action == 'p':
+            idx = idx-1
+        elif action == 'q':
+            break
+        else:
+            idx = idx+1
+        clear_output(wait=True)
+        plt.close()
+    plt.close()
+    return
 
-    for img, ann in zip(images, anns):
-        # Convert img to int and ann to np
-        img = float_to_int(img, make3channel=True)
-        ann = np.array(ann)
-        
-        # Create a copy of the RGB image to overlay the mask on
-        overlay_image = np.array(img)
-
-        # Apply the transparency from the annotation mask to the overlay
-        for class_label in [1, 2]:
-            rgba_color = mcolors.to_rgba(colors[class_label])
-            overlay_image[ann == class_label] = (
-            overlay_image[ann == class_label] * (1 - transparency[class_label])
-            + np.array(rgba_color[:3]) * transparency[class_label] * 255
-        ).astype(np.uint8)
-
-        overlayed_imgs.append(overlay_image)
-
-    return overlayed_imgs
-
-def npyToImage(imgs, size=None):
-    """
-    Input: One or a list of numpy arrays (raw image data). Optional resize parameter
-
-    Output: One or a list of image objects
-    """
-    
-    images = []
-
-    # Convert single img to list if needed
-    if type(imgs) is not list:
-        imgs = [imgs]
-
-    for img in imgs:
-        image = Image.fromarray(float_to_int(img, make3channel=True))
-        if size is not None:
-            image = image.resize(size, Image.ANTIALIAS)
-        images.append(image)
-
-    # Convert list to single image if necessary
-    if len(images) == 1:
-        images = images[0]
-    return images
 
 def get_companion(file_path):
     """
@@ -144,40 +159,6 @@ def get_companion(file_path):
         comp_file = file_path.replace('ann', 'img')
         comp_file = comp_file.replace('npy', 'png')
     return comp_file
-
-
-def get_image_data(dataset=None, imgset='all', includeAnn=False):
-    """
-    Input: 
-        dataset: Name of the dataset
-        imgset: can be 'all', 'train' or 'val'
-        includeAnn: If includeAnn=True, it will return a list of anns as well (return [imgs], [anns])
-
-    Output: Returns a compiled list of the image data (still npy for img or png for ann)
-    """
-
-    dirs = []
-    images = []
-    anns = []
-
-    # Add directory paths to dirs
-    if imgset == 'all':
-        dirs.append(os.path.join('DATASET',dataset,'data','my_dataset','img','train'))
-        dirs.append(os.path.join('DATASET',dataset,'data','my_dataset','img','val'))
-    else:
-        dirs.append(os.path.join('DATASET',dataset,'data','my_dataset','img',imgset))
-
-    # Loop through directories and glob files
-    for directory in dirs:
-        entries = glob.glob(f"{directory}/*")
-        # Append each entry to the images list
-        for entry in entries:
-            if includeAnn:
-                comp_entry = get_companion(entry)
-                anns.append(Image.open(comp_entry))
-            images.append(np.load(entry))
-
-    return images, anns
 
 
 def float_to_int(img, make3channel=False):
@@ -399,7 +380,7 @@ def correct_bounding_boxes(bounding_boxes, image_shape):
     - corrected_boxes (list): List of corrected bounding boxes.
     """
     
-    print('Correcting bounding boxes...')
+    #print('Correcting bounding boxes...')
 
     corrected_boxes = []
 

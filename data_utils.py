@@ -78,7 +78,7 @@ def print_orginial_data_stats(dataset, index):
     print('\nOriginal data statistics\n')
     print(combined_data)
 
-def display_images(dataset, hist=True, index=None):
+def display_images(dataset, hist=True, index=None, z_scale='og'):
     """
     Input: The name of the dataset. 
            If scale='norm', normalize display image to [0,1]. If scale='zscale', perform zscale
@@ -97,7 +97,7 @@ def display_images(dataset, hist=True, index=None):
         entry = f"{dr}/{idx}.npy"
         print(entry)
         img = np.load(entry)
-        z_img = float_to_int(apply_zscale(np.load(entry)), make3channel=True)
+        z_img = float_to_int(apply_zscale(np.load(entry), z_scale=z_scale), make3channel=True)
         ann = Image.open(get_companion(entry))
         if hist is not None:
             fig = plt.figure(figsize=(16, 16))
@@ -212,9 +212,9 @@ def float_to_int(img, make3channel=False):
 
 def apply_zscale(img, z_scale='og'):
     """
-    Input: An img. Index and globaldir are passed for logging. z_scale='og' for original method, 'alt' for alternate (second) method
+    Input: An img. z_scale='og' for original method, 'alt' for alternate (second) method
 
-    Output: Apply zscale transformation to radio channel. Then, transform the new bounds and apply them to the ha channel
+    Output: Apply zscale transformation to img
     """
 
     # Define the Z-Scale normalization interval

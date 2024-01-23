@@ -92,7 +92,7 @@ def gen_ann(polygons, labels, img_shape):
     return ann
 
 
-def gen_basesem(img, ann, bboxes, shuffle=None, z_scale=True):
+def gen_basesem(img, ann, bboxes, shuffle=None):
     """
     Input: The full img and ann images, and the list of bboxes
 
@@ -117,12 +117,6 @@ def gen_basesem(img, ann, bboxes, shuffle=None, z_scale=True):
         data = img[min_y:max_y,min_x:max_x,:]
         data = data_utils.cleanup_data(data)
         data_utils.log_array_statistics(data, i, global_dir)
-        if z_scale:
-            data = data_utils.apply_zscale(data)
-            data = data_utils.cleanup_data(data)
-            #data_utils.log_array_statistics(data, i, global_dir)
-        else:
-            data = data_utils.normalize(data)
         img_save = os.path.join(img_train_path, str(i)+'.npy')
         np.save(img_save, data)
 
@@ -136,13 +130,7 @@ def gen_basesem(img, ann, bboxes, shuffle=None, z_scale=True):
         min_x, min_y, max_x, max_y = bbox
         data = img[min_y:max_y,min_x:max_x,:]
         data = data_utils.cleanup_data(data)
-        #data_utils.log_array_statistics(data, i, os.path.join(global_dir, 'raw_log.txt'))
-        if z_scale:
-            data = data_utils.apply_zscale(data)
-            data = data_utils.cleanup_data(data)
-            #data_utils.log_array_statistics(data, i, os.path.join(global_dir, 'post_log.txt'))
-        else:
-            data = data_utils.normalize(data)
+        #data_utils.log_array_statistics(data, i, global_dir)
         img_save = os.path.join(img_val_path, str(i)+'.npy')
         np.save(img_save, data)
 
@@ -152,7 +140,7 @@ def gen_basesem(img, ann, bboxes, shuffle=None, z_scale=True):
 
 
 
-def generate(dir_name='', shuffle=None, shift=False, z_scale=True, scale_factor=3):
+def init(dir_name='', shuffle=None, shift=False, scale_factor=3):
 
     #  Define the path to the full image
     image_path_radio = './LMC/lmc_askap_aconf.fits'
@@ -162,7 +150,6 @@ def generate(dir_name='', shuffle=None, shift=False, z_scale=True, scale_factor=
     stats += '\nShuffle: ' + str(shuffle)
     stats += '\nShift: ' + str(shift)
     stats += '\nScale factor: ' + str(scale_factor)
-    stats += '\nZ-Scale: ' + str(z_scale)
     print(stats)
 
     #  Define the HII and SNR region files
@@ -174,7 +161,11 @@ def generate(dir_name='', shuffle=None, shift=False, z_scale=True, scale_factor=
     HII_reg_files.remove('./LMC/HII_boundaries/mcels-l279.reg')
 
     #  Create dataset directories, and then assign the global directory paths
-    assign_global_dir_paths(data_utils.create_dirs(dir_name))
+    glob_dir = data_utils.create_dirs(dir_name)
+    if glob_dir:
+        assign_global_dir_paths(glob_dir)
+    else:
+        return
 
     #  Generate combined image
     img = data_utils.gen_img(image_path_radio, image_path_halpha)
@@ -189,7 +180,7 @@ def generate(dir_name='', shuffle=None, shift=False, z_scale=True, scale_factor=
     ann = gen_ann(polygons, labels, img.shape)
 
     #  Generate dataset
-    gen_basesem(img, ann, bboxes, shuffle=shuffle, z_scale=z_scale)
+    gen_basesem(img, ann, bboxes, shuffle=shuffle)
     print('All done yay')
 
 

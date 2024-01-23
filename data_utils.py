@@ -32,6 +32,7 @@ import matplotlib.colors as mcolors
 from matplotlib.colors import ListedColormap
 from matplotlib.colors import LinearSegmentedColormap
 from IPython.display import display, clear_output
+import matplotlib.gridspec as gridspec
 
 def create_dirs(name):
     """
@@ -51,7 +52,7 @@ def create_dirs(name):
         proceed = input('Overwrite? [y/n] ')
         if proceed == 'n':
             print('Exiting...')
-            exit(0)
+            return None
         print('Overwriting directories...')
         shutil.rmtree(global_dir)
     print('Creating directories...')
@@ -62,69 +63,96 @@ def create_dirs(name):
     os.makedirs(img_val_path)
     return global_dir
 
-def display_images(dataset, index=None):
+
+def print_orginial_data_stats(dataset, index):
+    #  Inspect logged data. These files contain statistics regarding the raw data, before the zscale is applied.
+    radio_data = pd.read_csv(os.path.join('DATASET', dataset, 'radio_data.csv'))
+    ha_data = pd.read_csv(os.path.join('DATASET', dataset, 'ha_data.csv'))
+    
+    rad = radio_data.loc[index]
+    ha = ha_data.loc[index]
+    
+    # Concatenate the DataFrames side by side
+    combined_data = pd.concat([rad, ha], axis=1, keys=['Radio Data', 'Ha Data'])
+    
+    print('\nOriginal data statistics\n')
+    print(combined_data)
+
+def display_images(dataset, hist=True, index=None):
     """
-    Input: The name of the dataset. If an index is provided, only show that image and then return
+    Input: The name of the dataset. 
+           If scale='norm', normalize display image to [0,1]. If scale='zscale', perform zscale
+           If hist=True, display histograms below images or each channel.
+           If an index is provided, only show that image and then return
     Output: None. Displays data in jupyter notebook
     """
-    if index is not None:
-        idx = index
-    else:
-        idx = 0
     dr = os.path.join('DATASET',dataset,'data','my_dataset','img','train')
-    while True:
-        entry = f"{dr}/{idx}.npy"
-        print(entry)
-        img = float_to_int(np.load(entry), make3channel=True)
-        ann = Image.open(get_companion(entry))
-        fig, axs = plt.subplots(1, 2, figsize=(16,8))
-        axs[0].imshow(ann)
-        axs[0].set_title('Annotation')
-        axs[1].imshow(img)
-        axs[1].set_title('Image')
-        plt.show() 
-        if index is not None:
-            break
-        action = input('Press enter for next image, \'p\' for previous image, or enter image id. \'q\' to quit')
-        if action.isdigit():
-            idx = int(action)
-        elif action == 'p':
-            idx = idx-1
-        elif action == 'q':
-            break
-        else:
-            idx = idx+1
-        clear_output(wait=True)
-        plt.close()
-    plt.close()
-    return
-
-def display_histograms(dataset, index=None):
     histrange = (0,255)
     bins=255
     if index is not None:
         idx = index
     else:
         idx = 0
-    dr = os.path.join('DATASET',dataset,'data','my_dataset','img','train')
     while True:
         entry = f"{dr}/{idx}.npy"
         print(entry)
-        img = float_to_int(np.load(entry), make3channel=False)
-        radio = img[:,:,0]
-        ha = img[:,:,1]
-        fig, axs = plt.subplots(1, 2, figsize=(16,3))
-        axs[0].hist(radio.ravel(), bins=bins, range=histrange, alpha=0.7)
-        axs[0].set_title('Radio (Red Channel) Data')
-        axs[0].set_xlabel('Pixel Value')
-        axs[0].set_ylabel('Frequency')
-        axs[0].grid(axis='y', alpha=0.75)
-        axs[1].hist(ha.ravel(), bins=bins, range=histrange, alpha=0.7)
-        axs[1].set_title('H-Alpha (Blue Channel) Data')
-        axs[1].set_xlabel('Pixel Value')
-        axs[1].set_ylabel('Frequency')
-        axs[1].grid(axis='y', alpha=0.75)
-        plt.show()
+        img = np.load(entry)
+        z_img = float_to_int(apply_zscale(np.load(entry)), make3channel=True)
+        ann = Image.open(get_companion(entry))
+        if hist is not None:
+            fig = plt.figure(figsize=(16, 16))
+            gs = gridspec.GridSpec(3, 2, height_ratios=[2, 1, 1])
+            # Subplot 1 (Top Left) Annotation
+            
+            ax1 = plt.subplot(gs[0, 0])
+            ax1.imshow(ann)
+            ax1.set_title('Annotation')
+
+            # Subplot 2 (Top Right) Image
+            ax2 = plt.subplot(gs[0, 1])
+            ax2.imshow(z_img)
+            ax2.set_title('Image')
+            
+            # Subplot 3 (Middle Left) Radio hist of Image
+            ax3 = plt.subplot(gs[1, 0])
+            ax3.hist(z_img[:,:,0].ravel(), bins=bins, range=histrange, alpha=0.7)
+            ax3.set_title('Radio (Red Channel) Data')
+            ax3.set_xlabel('Pixel Value')
+            ax3.set_ylabel('Frequency')
+            ax3.grid(axis='y', alpha=0.75)
+            
+            # Subplot 4 (Middle Right) HA hist of image
+            ax4 = plt.subplot(gs[1, 1])
+            ax4.hist(z_img[:,:,2].ravel(), bins=bins, range=histrange, alpha=0.7)
+            ax4.set_title('H-Alpha (Blue Channel) Data')
+            ax4.set_xlabel('Pixel Value')
+            ax4.set_ylabel('Frequency')
+            ax4.grid(axis='y', alpha=0.75)
+        
+            # Subplot 5 (Bottom Left) Radio hist of original image data
+            ax3 = plt.subplot(gs[2, 0])
+            ax3.hist(img[:,:,0].ravel(), bins=bins, alpha=0.7)
+            ax3.set_title('Radio (Red Channel) ORIGINAL Data')
+            ax3.set_xlabel('Pixel Value')
+            ax3.set_ylabel('Frequency')
+            ax3.grid(axis='y', alpha=0.75)
+            
+            # Subplot 6 (Bottom Right) HA hist of orginal image data
+            ax4 = plt.subplot(gs[2, 1])
+            ax4.hist(img[:,:,1].ravel(), bins=bins, alpha=0.7)
+            ax4.set_title('H-Alpha (Blue Channel) ORIGINAL Data')
+            ax4.set_xlabel('Pixel Value')
+            ax4.set_ylabel('Frequency')
+            ax4.grid(axis='y', alpha=0.75)
+        else:
+            fig, axs = plt.subplots(1, 2, figsize=(16,8))
+            axs[0].imshow(ann)
+            axs[0].set_title('Annotation')
+            axs[1].imshow(z_img)
+            axs[1].set_title('Image')
+        plt.suptitle(f"Image {idx}")
+        plt.show() 
+        print_orginial_data_stats(dataset, idx)
         if index is not None:
             break
         action = input('Press enter for next image, \'p\' for previous image, or enter image id. \'q\' to quit')
@@ -181,34 +209,10 @@ def float_to_int(img, make3channel=False):
         ret_img = get3channel(ret_img)
     return ret_img
 
-def apply_zscale(img):
+
+def apply_zscale(img, z_scale='og'):
     """
-    Input: An img
-
-    Output: Each channel gets a z-scaled transformation applied
-    """
-
-    # Define the Z-Scale normalization interval
-    zscale = ZScaleInterval(contrast=0.3)
-
-    # Normalize each channel separately
-    zscaled_channels = []
-    for channel in range(img.shape[2]):
-        channel_data = img[:,:,channel]  # Get data for the current channel
-        if np.all(channel_data == 0):
-            norm_channel = channel_data
-        else:
-            vmin, vmax = zscale.get_limits(channel_data)  # Compute the limits for Z-Scale
-            norm = ImageNormalize(vmin=vmin, vmax=vmax)
-            norm_channel = norm(channel_data) # Apply the normalization to the channel
-        zscaled_channels.append(norm_channel)
-
-    # Combine the normalized channels into a single 3-channel image
-    return np.stack(zscaled_channels, axis=-1)
-
-def apply_zscale2(img):
-    """
-    Input: An img
+    Input: An img. Index and globaldir are passed for logging. z_scale='og' for original method, 'alt' for alternate (second) method
 
     Output: Apply zscale transformation to radio channel. Then, transform the new bounds and apply them to the ha channel
     """
@@ -218,22 +222,26 @@ def apply_zscale2(img):
 
     # Normalize each channel separately
     
-    radio_data = img[:,:,0]  # Get ha data in the first channel
+    radio_data = img[:,:,0]  # Get radio data in the first channel
     if np.all(radio_data == 0):
-        #norm_channel = channel_data
         print('returning un-zscaled image')
         return img
 
     ha_data = img[:,:,1]
     ha_vmin, ha_vmax = zscale.get_limits(ha_data)  # Compute the Z-Scale limits for h-alpha channel
     ha_norm = ImageNormalize(vmin=ha_vmin, vmax=ha_vmax) # Compute normalization
-
-    radio_vmin = ha_vmin / 826000  #  Adapt h-alpha limits to radio
-    radio_vmax = ha_vmax / 826000
+    if z_scale == 'og':
+        #  Perform original zscale method
+        radio_vmin, radio_vmax = zscale.get_limits(radio_data)  # Compute the Z-Scale limits for h-alpha channel
+    else:
+        #  Perform alternate zscale method
+        radio_vmin = ha_vmin / 826000  #  Adapt h-alpha limits to radio
+        radio_vmax = ha_vmax / 826000
     radio_norm = ImageNormalize(vmin=radio_vmin, vmax=radio_vmax) # Compute normalization with adapted bounds
 
     # Combine the normalized channels into a single 3-channel image
     return np.stack([radio_norm(radio_data), ha_norm(ha_data)], axis=-1)
+
 
 def normalize(img):
     """
@@ -465,6 +473,7 @@ def gen_bboxes(polygons, scale_factor=2, shift=True, imgshape=(16740,16740)):
     return correct_bounding_boxes(bboxes, imgshape)
 
 
+
 def log_array_statistics(array, image_index, global_dir):
     files = [os.path.join(global_dir, 'radio_data.csv'), os.path.join(global_dir, 'ha_data.csv')]
     
@@ -474,16 +483,17 @@ def log_array_statistics(array, image_index, global_dir):
         # Calculate statistics
         mean_value = np.mean(channel_data)
         std_deviation = np.std(channel_data)
-        max_value = np.max(channel_data)
         min_value = np.min(channel_data)
+        percentiles = np.percentile(channel_data, [10, 25, 50, 75, 90, 99])
+        max_value = np.max(channel_data)
 
         # Log the statistics to the CSV file
         with open(file, 'a', newline='') as csvfile:
             csv_writer = csv.writer(csvfile)
             if image_index == 0:
                 # Write header only for the first image
-                csv_writer.writerow(['Image', 'Mean', 'Standard Deviation', 'Maximum', 'Minimum'])
-            csv_writer.writerow([image_index, mean_value, std_deviation, max_value, min_value])
+                csv_writer.writerow(['Image', 'Mean', 'Std', 'Minimum', '10%', '25%', '50%', '75%', '90%', '99%', 'Maximum'])
+            csv_writer.writerow([image_index, mean_value, std_deviation, min_value] + list(percentiles) + [max_value])
 
 
 

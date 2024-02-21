@@ -115,7 +115,6 @@ def gen_basesem(img, ann, bboxes, shuffle=None):
     for i, bbox in enumerate(tqdm(train_bboxes)):
         min_x, min_y, max_x, max_y = bbox
         data = img[min_y:max_y,min_x:max_x,:]
-        data = data_utils.cleanup_data(data)
         data_utils.log_array_statistics(data, i, global_dir)
         img_save = os.path.join(img_train_path, str(i)+'.npy')
         np.save(img_save, data)
@@ -129,7 +128,6 @@ def gen_basesem(img, ann, bboxes, shuffle=None):
     for i, bbox in enumerate(tqdm(val_bboxes)):
         min_x, min_y, max_x, max_y = bbox
         data = img[min_y:max_y,min_x:max_x,:]
-        data = data_utils.cleanup_data(data)
         #data_utils.log_array_statistics(data, i, global_dir)
         img_save = os.path.join(img_val_path, str(i)+'.npy')
         np.save(img_save, data)
@@ -140,7 +138,7 @@ def gen_basesem(img, ann, bboxes, shuffle=None):
 
 
 
-def init(dir_name='', shuffle=None, shift=False, scale_factor=3):
+def init(dir_name='', shuffle=None, shift=False, scale_factor=3, logstretch=False):
 
     #  Define the path to the full image
     image_path_radio = './LMC/lmc_askap_aconf.fits'
@@ -150,6 +148,7 @@ def init(dir_name='', shuffle=None, shift=False, scale_factor=3):
     stats += '\nShuffle: ' + str(shuffle)
     stats += '\nShift: ' + str(shift)
     stats += '\nScale factor: ' + str(scale_factor)
+    stats += '\nLog stretch: ' + str(logstretch)
     print(stats)
 
     #  Define the HII and SNR region files
@@ -168,7 +167,7 @@ def init(dir_name='', shuffle=None, shift=False, scale_factor=3):
         return
 
     #  Generate combined image
-    img = data_utils.gen_img(image_path_radio, image_path_halpha)
+    img = data_utils.gen_img(image_path_radio, image_path_halpha, logstretch=logstretch)
     
     #  Retrieve list of Polygons and corresponding labels
     polygons, labels = data_utils.get_polygons_and_labels(HII_reg_files, SNR_reg_files)

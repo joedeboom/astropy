@@ -17,7 +17,7 @@ import time
 import pickle
 from regions import Regions
 from astropy.io import fits
-from astropy.visualization import ZScaleInterval, ImageNormalize
+from astropy.visualization import ZScaleInterval, ImageNormalize, LogStretch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import pprint
@@ -78,12 +78,13 @@ def print_orginial_data_stats(dataset, index):
     print('\nOriginal data statistics\n')
     print(combined_data)
 
-def display_images(dataset, hist=True, index=None, z_scale='og'):
+def display_images(dataset, hist=True, index=None, scale='og', bounds=None):
     """
     Input: The name of the dataset. 
            If scale='norm', normalize display image to [0,1]. If scale='zscale', perform zscale
            If hist=True, display histograms below images or each channel.
            If an index is provided, only show that image and then return
+           If bounds is not None, will compute normalization based on those bounds, overriding the zscale param
     Output: None. Displays data in jupyter notebook
     """
     dr = os.path.join('DATASET',dataset,'data','my_dataset','img','train')
@@ -97,7 +98,12 @@ def display_images(dataset, hist=True, index=None, z_scale='og'):
         entry = f"{dr}/{idx}.npy"
         print(entry)
         img = np.load(entry)
-        z_img = float_to_int(apply_zscale(np.load(entry), z_scale=z_scale), make3channel=True)
+        if bounds is not None:
+            z_img = float_to_int(apply_bounds(np.load(entry), bounds=bounds), make3channel=True)
+        elif scale=='og':
+            z_img = float_to_int(apply_zscale(np.load(entry), z_scale='og'), make3channel=True)
+        else: #scale=='log'. Already stretched!
+            z_img = float_to_int(np.load(entry), make3channel=True)
         ann = Image.open(get_companion(entry))
         if hist is not None:
             fig = plt.figure(figsize=(16, 16))
@@ -139,7 +145,7 @@ def display_images(dataset, hist=True, index=None, z_scale='og'):
             
             # Subplot 6 (Bottom Right) HA hist of orginal image data
             ax4 = plt.subplot(gs[2, 1])
-            ax4.hist(img[:,:,1].ravel(), bins=bins, alpha=0.7)
+            ax4.hist(img[:,:,1].ravel(), bins=bins, range=(0,5), alpha=0.7)
             ax4.set_title('H-Alpha (Blue Channel) ORIGINAL Data')
             ax4.set_xlabel('Pixel Value')
             ax4.set_ylabel('Frequency')
@@ -209,6 +215,13 @@ def float_to_int(img, make3channel=False):
         ret_img = get3channel(ret_img)
     return ret_img
 
+def apply_bounds(img, bounds):
+    radio_data = img[:,:,0]  # Get radio data in the first channel
+    ha_data = img[:,:,1]
+    radio_norm = ImageNormalize(vmin=bounds['rad_vmin'], vmax=bounds['rad_vmax']) # Compute normalizations
+    ha_norm = ImageNormalize(vmin=bounds['ha_vmin'], vmax=bounds['ha_vmax']) # Compute normalization
+    return np.stack([radio_norm(radio_data), ha_norm(ha_data)], axis=-1)
+    
 
 def apply_zscale(img, z_scale='og'):
     """
@@ -243,6 +256,7 @@ def apply_zscale(img, z_scale='og'):
     return np.stack([radio_norm(radio_data), ha_norm(ha_data)], axis=-1)
 
 
+
 def normalize(img):
     """
     Input: An  img, after cleanup_data has been called
@@ -250,17 +264,20 @@ def normalize(img):
     Output: Each channel individually normalized to the range [0,1]
     """
     
-    channels = []
-    
-    for channel in range(img.shape[2]):
-        channel_data = img[:,:,channel]
-        if np.all(channel_data == 0):
-            norm_channel = channel_data
-        else:
-            norm_channel = (channel_data - np.min(channel_data)) / (np.max(channel_data) - np.min(channel_data))
-        channels.append(norm_channel)
+    if len(img.shape) == 2:  #  Single channel image
+        norm_img = (img - np.min(img)) / (np.max(img) - np.min(img))
+    else:  #  Multi-channel image
+        channels = [] 
+        for channel in range(img.shape[2]):
+            channel_data = img[:,:,channel]
+            if np.all(channel_data == 0):
+                norm_channel = channel_data
+            else:
+                norm_channel = (channel_data - np.min(channel_data)) / (np.max(channel_data) - np.min(channel_data))
+            channels.append(norm_channel)
+        norm_img = np.stack(channels, axis=-1)
+    return norm_img
 
-    return np.stack(channels, axis=-1)
 
 def cleanup_data(img):
     """
@@ -318,7 +335,7 @@ def merge_images(img_r, img_h):
     return result_image
 
 
-def gen_img(image_path_r, image_path_h):
+def gen_img(image_path_r, image_path_h, logstretch=False, returnBounds=False):
     """
     Input: Path to the radio and h-alpha images.
 
@@ -328,17 +345,27 @@ def gen_img(image_path_r, image_path_h):
     print('Generating image...')
     
     # Halpha image
-    img_h = fits.open(image_path_h)[0].data
-    #threshhold_img.get_image_statistics(img_h)
+    img_h = cleanup_data(fits.open(image_path_h)[0].data)
     
-    # Radio image. Multiply by 1000
-    img_r = fits.getdata(image_path_r)[0][0]
-    #img_r = img_r * 1000
-    #threshhold_img.get_image_statistics(img_r)
+    # Radio image
+    img_r = cleanup_data(fits.getdata(image_path_r)[0][0])
+    
+    if logstretch:
+        stretch = LogStretch()
+        img_h = stretch(normalize(img_h))
+        img_r = stretch(normalize(img_r))
+
+    if returnBounds:
+        #  Save zscale bounds to file
+        print("Saving bounds to file...")
+        zscale = ZScaleInterval(contrast=0.3)
+        ha_vmin, ha_vmax = zscale.get_limits(img_h)   # Compute the Z-Scale limits for h-alpha channel
+        rad_vmin, rad_vmax = zscale.get_limits(img_r) # Compute the Z-Scale limits for radio channel
+        bounds = {'ha_vmin': ha_vmin,'ha_vmax': ha_vmax,'rad_vmin': rad_vmin,'rad_vmax': rad_vmax}
+        return bounds
 
     # Merge images and return
     return merge_images(img_r, img_h)
-
 
 
 def get_polygons_and_labels(HII_reg_files, SNR_reg_files):
